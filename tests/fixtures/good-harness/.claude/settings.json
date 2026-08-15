@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make quick)",
+      "Bash(make test)",
+      "Bash(make lint)",
+      "Bash(git diff:*)",
+      "Bash(git status)",
+      "Read(./src/**)",
+      "Read(./tests/**)",
+      "Edit(./src/**)",
+      "Edit(./tests/**)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(rm -rf:*)",
+      "Read(./.env)",
+      "Read(./secrets/**)",
+      "Edit(./src/billing/ledger.py)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruff format $CLAUDE_FILE_PATHS || true"
+          },
+          {
+            "type": "command",
+            "command": "ruff check --fix $CLAUDE_FILE_PATHS"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/guard-dangerous-command.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "make quick"
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "PYTHONDONTWRITEBYTECODE": "1"
+  }
+}
