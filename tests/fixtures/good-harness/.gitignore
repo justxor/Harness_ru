@@ -1,0 +1,31 @@
+# fixture: good-harness — гигиена репозитория
+# Секреты и мусор не должны попадать ни в историю, ни в контекст агента.
+
+# секреты
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# артефакты сборки и кэши
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# локальное состояние агента: личное, не командное
+.claude/settings.local.json
+.claude/local-state.json
+.agent/cache/
+
+# логи и временные файлы
+*.log
+tmp/
+.DS_Store
