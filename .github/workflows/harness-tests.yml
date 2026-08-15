@@ -1,0 +1,136 @@
+# =============================================================================
+#  Тесты harness для этого репозитория.
+#
+#  Что здесь проверяется:
+#    1) все shell-скрипты синтаксически валидны;
+#    2) файл вопросов самопроверки цел и не перекошен;
+#    3) на эталонной фикстуре наборы T01-T05 зелёные;
+#    4) на сломанной фикстуре наборы обязаны падать;
+#    5) pytest-версия проверок согласуется с bash-версией.
+#
+#  Пункт 4 — самое важное. Без него зелёный значок ничего не значит:
+#  тесты, которые не умеют падать, всегда зелёные.
+# =============================================================================
+
+name: harness-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  syntax:
+    name: синтаксис скриптов
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash -n для всех скриптов
+        run: |
+          set -e
+          found=0
+          while IFS= read -r f; do
+            found=$((found + 1))
+            bash -n "$f"
+            echo "ok  $f"
+          done < <(find . -name '*.sh' -not -path './.git/*')
+          echo "проверено скриптов: $found"
+          test "$found" -gt 0
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck --severity=error $(find . -name '*.sh' -not -path './.git/*')
+
+  quiz-data:
+    name: целостность вопросов самопроверки
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/quiz/quiz.sh --check
+      - run: bash tests/quiz/quiz.sh --topics
+
+  good-fixture:
+    name: эталонная обвязка — зелёная
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: T01-T05 на fixtures/good-harness
+        env:
+          NO_COLOR: "1"
+        run: |
+          cd tests/fixtures/good-harness
+          for s in test_01_structure.sh test_02_context_budget.sh \
+                   test_03_commands.sh test_04_gates_and_hooks.sh \
+                   test_05_golden_tasks.sh; do
+            HARNESS_ROOT="$PWD" bash "$GITHUB_WORKSPACE/tests/$s"
+          done
+
+  bad-fixture:
+    name: сломанная обвязка — красная
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: T01-T04 обязаны упасть на fixtures/bad-harness
+        env:
+          NO_COLOR: "1"
+        run: |
+          cd tests/fixtures/bad-harness
+          failed=0
+          for s in test_01_structure.sh test_02_context_budget.sh \
+                   test_03_commands.sh test_04_gates_and_hooks.sh; do
+            if HARNESS_ROOT="$PWD" bash "$GITHUB_WORKSPACE/tests/$s" > /dev/null 2>&1; then
+              echo "::error::$s прошёл на заведомо сломанной обвязке — тест ничего не ловит"
+            else
+              echo "ok  $s упал, как и должен"
+              failed=$((failed + 1))
+            fi
+          done
+          echo "упало наборов: $failed из 4"
+          test "$failed" -eq 4
+
+  selftest:
+    name: самотест набора
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [good-fixture, bad-fixture]
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          NO_COLOR: "1"
+        run: bash tests/test_06_selftest.sh
+
+  pytest:
+    name: pytest-версия проверок
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet pytest pyyaml
+      - name: проверки на эталонной фикстуре
+        env:
+          HARNESS_ROOT: tests/fixtures/good-harness
+        run: python -m pytest tests/test_harness.py -q -m "not slow"
+      - name: те же проверки обязаны падать на сломанной
+        env:
+          HARNESS_ROOT: tests/fixtures/bad-harness
+        run: |
+          if python -m pytest tests/test_harness.py -q -m "not slow" > /dev/null 2>&1; then
+            echo "::error::pytest-проверки прошли на сломанной обвязке"
+            exit 1
+          fi
+          echo "ok  упало, как и должно"
