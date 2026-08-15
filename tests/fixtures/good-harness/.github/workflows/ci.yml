@@ -1,0 +1,35 @@
+# fixture: good-harness — второй уровень ворот.
+# Паритет с локальными проверками обязателен: CI вызывает те же цели Makefile,
+# что и человек у себя на машине. Расхождение — источник «у меня работало».
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: установка зависимостей
+        run: pip install -e ".[dev]"
+
+      - name: линт и типы
+        run: make lint types
+
+      - name: тесты
+        run: make test
+
+      - name: миграции обратно совместимы
+        run: make migrate-check
+
+      - name: публичный API не изменился
+        run: make api-diff
